@@ -121,7 +121,39 @@ Each entry specifies:
 - `transport` (optional, remote only): Override transport detection (`"streamable_http"` or `"websocket"`). Usually auto-detected from URL protocol.
 - `enabled`: Set to false to skip connecting to this server
 
-#### Remote Server Configuration
+### Docker
+
+Run MCP Gateway in Docker with HTTP transport:
+
+```bash
+# Build the image
+docker build -t mcp-gateway .
+
+# Run with config mounted
+docker run -p 3000:3000 \
+  -v ./examples/config.json:/home/gateway/.config/mcp-gateway/config.json:ro \
+  mcp-gateway
+```
+
+**Endpoints:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Gateway info and endpoints |
+| `GET /health` | Health check |
+| `/mcp` | MCP protocol endpoint |
+
+**Example:**
+
+```bash
+curl http://localhost:3000/
+# {"name":"MCP Gateway",...,"endpoints":{"mcp":"/mcp","health":"/health"}}
+
+curl http://localhost:3000/health
+# {"status":"ok"}
+```
+
+### Remote Server Configuration
 
 Remote servers are auto-detected based on the URL protocol:
 - `http://` or `https://` → Streamable HTTP (recommended)
@@ -242,7 +274,12 @@ The search uses [MiniSearch](https://github.com/lucaong/minisearch) with BM25 ra
 git clone https://github.com/eznix86/mcp-gateway.git
 cd mcp-gateway
 bun install
+
+# Run locally (stdio transport)
 bun run index.ts
+
+# Run with Docker (HTTP transport on port 3000)
+bun run docker:build && bun run docker:run
 ```
 
 ## License

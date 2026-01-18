@@ -7,12 +7,17 @@
     "mcp-gateway": "./dist/index.js"
   },
   "scripts": {
-    "start": "bun run index.ts",
-    "build": "bun build index.ts --outdir dist --target node"
+    "start": "bun run src/index.ts",
+    "start:docker": "bun run src/docker.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "build:docker": "bun build src/docker.ts --target bun --outfile=gateway",
+    "docker:build": "docker build -t mcp-gateway .",
+    "docker:run": "docker run -p 3000:3000 -v ./examples/config.json:/home/gateway/.config/mcp-gateway/config.json:ro mcp-gateway"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^25.0.9"
+    "@types/node": "^25.0.9",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"

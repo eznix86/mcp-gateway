@@ -1,0 +1,8 @@
+node_modules
+.bun
+dist
+*.log
+.git
+.gitignore
+.env
+*.local

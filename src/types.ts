@@ -5,6 +5,8 @@ export interface UpstreamConfig {
   transport?: "streamable_http" | "websocket";
   endpoint?: string;
   enabled?: boolean;
+  lazy?: boolean;  // if true, only connect on first request
+  idleTimeout?: number;  // milliseconds before sleeping (default: 2hrs)
 }
 
 export interface GatewayConfig {

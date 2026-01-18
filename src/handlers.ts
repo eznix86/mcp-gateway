@@ -1,3 +1,4 @@
+import packageJson from "../package.json" with { type: "json" };
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import type { SearchFilters } from "./types.js";
@@ -10,7 +11,7 @@ export function createServer(
   connections: ConnectionManager,
   jobManager: JobManager,
 ): McpServer {
-  const server = new McpServer({ name: "mcp-gateway", version: "1.0.0" });
+  const server = new McpServer({ name: "mcp-gateway", version: packageJson.version });
 
   server.registerTool(
     "gateway.search",
