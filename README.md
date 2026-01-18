@@ -1,6 +1,6 @@
 # MCP Gateway
 
-MCP Gateway is a server aggregation tool that connects multiple Model Context Protocol (MCP) servers into a single gateway, exposing all tools from connected servers through unified search, describe, and invoke interfaces.
+MCP Gateway is a server aggregation tool that connects multiple Model Context Protocol (MCP) servers into a single gateway, exposing all tools from connected servers through unified search, describe, and invoke interfaces and it exposes only 5 tools.
 
 ## The Context Limit Problem
 
