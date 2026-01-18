@@ -4,7 +4,7 @@ MCP Gateway is a server aggregation tool that connects multiple Model Context Pr
 
 ## The Context Limit Problem
 
-When connecting an client (Claude, Opencode, etc.) to multiple MCP servers, each server lists all its tools. With 10+ MCPs each exposing 10-50 tools, you can easily exceed 500+ tool descriptions in the system prompt:
+When connecting an client (Claude Code, Opencode, etc.) to multiple MCP servers, each server lists all its tools. With 10+ MCPs each exposing 10-50 tools, you can easily exceed 500+ tool descriptions in the system prompt:
 
 ```
 10 servers × 20 tools each = 200+ tool descriptions
