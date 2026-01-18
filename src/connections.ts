@@ -1,4 +1,3 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -41,7 +40,7 @@ export class ConnectionManager {
   private async connectTransport(serverKey: string, config: UpstreamConfig, transport: any): Promise<void> {
     transport.onclose = () => console.error(`[${serverKey}] Connection closed`);
     transport.onerror = (error: Error) => {
-      // Suppress JSON parse errors from server logs (harmless)
+      // Suppress JSON parse errors from server logs
       if (error.message.includes("JSON Parse error")) return;
       console.error(`[${serverKey}] Connection error:`, error.message);
     };
