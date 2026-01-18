@@ -4,7 +4,7 @@
   "description": "MCP Gateway - Aggregate multiple MCP servers into a single gateway",
   "type": "module",
   "bin": {
-    "mcp-gateway": "index.ts"
+    "mcp-gateway": "./dist/index.js"
   },
   "scripts": {
     "start": "bun run index.ts",

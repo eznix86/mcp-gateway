@@ -34,11 +34,12 @@ MCP Gateway operates as both an MCP client (connecting to upstream servers) and 
 ### From GitHub
 
 ```bash
-# Install as a dependency
-bun add github:eznix86/mcp-gateway
-
-# Or run directly without installation
+# Run directly without installation
 bunx github:eznix86/mcp-gateway
+
+# Or install as a global command
+bun add -g github:eznix86/mcp-gateway
+mcp-gateway
 ```
 
 ### From Source
@@ -47,6 +48,13 @@ bunx github:eznix86/mcp-gateway
 git clone https://github.com/eznix86/mcp-gateway.git
 cd mcp-gateway
 bun install
+
+# Run directly (uses Bun to interpret TypeScript)
+bun run index.ts
+
+# Or build and run as JavaScript
+bun build index.ts --outdir dist --target node
+node dist/index.js
 ```
 
 ## Configuration
