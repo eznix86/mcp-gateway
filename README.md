@@ -81,7 +81,9 @@ Add to your OpenCode MCP configuration:
 }
 ```
 
-You may append your global AGENTS.md (`~/.config/opencode/AGENTS.md`) with this [template](./templates/AGENTS.md)
+You may append your global AGENTS.md (`~/.config/opencode/AGENTS.md`) with this [template](./templates/AGENTS.md).
+
+You may now just simple enumerate the MCP available.
 
 ## Configuration
 
