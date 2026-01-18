@@ -46,6 +46,8 @@ MCP Gateway operates as both an MCP client (connecting to upstream servers) and 
 5. AI clients connect to Gateway and use `gateway.search` to find relevant tools
 6. Only the tools the client actually needs are invoked
 
+You will notice around ~40% reduction of initial token used.
+
 ## Installation
 
 ### Claude Code
