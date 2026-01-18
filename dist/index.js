@@ -4022,8 +4022,8 @@ var require_core = __commonJS((exports) => {
           return this;
         }
         case "object": {
-          const cacheKey = schemaKeyRef;
-          this._cache.delete(cacheKey);
+          const cacheKey2 = schemaKeyRef;
+          this._cache.delete(cacheKey2);
           let id = schemaKeyRef[this.opts.schemaId];
           if (id) {
             id = (0, resolve_1.normalizeId)(id);
@@ -12139,6 +12139,7 @@ config(en_default());
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 var LATEST_PROTOCOL_VERSION = "2025-11-25";
+var DEFAULT_NEGOTIATED_PROTOCOL_VERSION = "2025-03-26";
 var SUPPORTED_PROTOCOL_VERSIONS = [LATEST_PROTOCOL_VERSION, "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
 var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
 var JSONRPC_VERSION = "2.0";
@@ -12311,6 +12312,7 @@ var InitializeRequestSchema = RequestSchema.extend({
   method: literal("initialize"),
   params: InitializeRequestParamsSchema
 });
+var isInitializeRequest = (value) => InitializeRequestSchema.safeParse(value).success;
 var ServerCapabilitiesSchema = object({
   experimental: record(string2(), AssertObjectSchema).optional(),
   logging: AssertObjectSchema.optional(),
@@ -13068,10 +13070,1141 @@ class StdioServerTransport {
   }
 }
 
-// index.ts
+// node_modules/@hono/node-server/dist/index.mjs
+import { Http2ServerRequest as Http2ServerRequest2 } from "http2";
+import { Http2ServerRequest } from "http2";
+import { Readable } from "stream";
+import crypto2 from "crypto";
+var RequestError = class extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = "RequestError";
+  }
+};
+var toRequestError = (e) => {
+  if (e instanceof RequestError) {
+    return e;
+  }
+  return new RequestError(e.message, { cause: e });
+};
+var GlobalRequest = global.Request;
+var Request = class extends GlobalRequest {
+  constructor(input, options) {
+    if (typeof input === "object" && getRequestCache in input) {
+      input = input[getRequestCache]();
+    }
+    if (typeof options?.body?.getReader !== "undefined") {
+      options.duplex ??= "half";
+    }
+    super(input, options);
+  }
+};
+var newHeadersFromIncoming = (incoming) => {
+  const headerRecord = [];
+  const rawHeaders = incoming.rawHeaders;
+  for (let i = 0;i < rawHeaders.length; i += 2) {
+    const { [i]: key, [i + 1]: value } = rawHeaders;
+    if (key.charCodeAt(0) !== 58) {
+      headerRecord.push([key, value]);
+    }
+  }
+  return new Headers(headerRecord);
+};
+var wrapBodyStream = Symbol("wrapBodyStream");
+var newRequestFromIncoming = (method, url2, headers, incoming, abortController) => {
+  const init = {
+    method,
+    headers,
+    signal: abortController.signal
+  };
+  if (method === "TRACE") {
+    init.method = "GET";
+    const req = new Request(url2, init);
+    Object.defineProperty(req, "method", {
+      get() {
+        return "TRACE";
+      }
+    });
+    return req;
+  }
+  if (!(method === "GET" || method === "HEAD")) {
+    if ("rawBody" in incoming && incoming.rawBody instanceof Buffer) {
+      init.body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(incoming.rawBody);
+          controller.close();
+        }
+      });
+    } else if (incoming[wrapBodyStream]) {
+      let reader;
+      init.body = new ReadableStream({
+        async pull(controller) {
+          try {
+            reader ||= Readable.toWeb(incoming).getReader();
+            const { done, value } = await reader.read();
+            if (done) {
+              controller.close();
+            } else {
+              controller.enqueue(value);
+            }
+          } catch (error2) {
+            controller.error(error2);
+          }
+        }
+      });
+    } else {
+      init.body = Readable.toWeb(incoming);
+    }
+  }
+  return new Request(url2, init);
+};
+var getRequestCache = Symbol("getRequestCache");
+var requestCache = Symbol("requestCache");
+var incomingKey = Symbol("incomingKey");
+var urlKey = Symbol("urlKey");
+var headersKey = Symbol("headersKey");
+var abortControllerKey = Symbol("abortControllerKey");
+var getAbortController = Symbol("getAbortController");
+var requestPrototype = {
+  get method() {
+    return this[incomingKey].method || "GET";
+  },
+  get url() {
+    return this[urlKey];
+  },
+  get headers() {
+    return this[headersKey] ||= newHeadersFromIncoming(this[incomingKey]);
+  },
+  [getAbortController]() {
+    this[getRequestCache]();
+    return this[abortControllerKey];
+  },
+  [getRequestCache]() {
+    this[abortControllerKey] ||= new AbortController;
+    return this[requestCache] ||= newRequestFromIncoming(this.method, this[urlKey], this.headers, this[incomingKey], this[abortControllerKey]);
+  }
+};
+[
+  "body",
+  "bodyUsed",
+  "cache",
+  "credentials",
+  "destination",
+  "integrity",
+  "mode",
+  "redirect",
+  "referrer",
+  "referrerPolicy",
+  "signal",
+  "keepalive"
+].forEach((k) => {
+  Object.defineProperty(requestPrototype, k, {
+    get() {
+      return this[getRequestCache]()[k];
+    }
+  });
+});
+["arrayBuffer", "blob", "clone", "formData", "json", "text"].forEach((k) => {
+  Object.defineProperty(requestPrototype, k, {
+    value: function() {
+      return this[getRequestCache]()[k]();
+    }
+  });
+});
+Object.setPrototypeOf(requestPrototype, Request.prototype);
+var newRequest = (incoming, defaultHostname) => {
+  const req = Object.create(requestPrototype);
+  req[incomingKey] = incoming;
+  const incomingUrl = incoming.url || "";
+  if (incomingUrl[0] !== "/" && (incomingUrl.startsWith("http://") || incomingUrl.startsWith("https://"))) {
+    if (incoming instanceof Http2ServerRequest) {
+      throw new RequestError("Absolute URL for :path is not allowed in HTTP/2");
+    }
+    try {
+      const url22 = new URL(incomingUrl);
+      req[urlKey] = url22.href;
+    } catch (e) {
+      throw new RequestError("Invalid absolute URL", { cause: e });
+    }
+    return req;
+  }
+  const host = (incoming instanceof Http2ServerRequest ? incoming.authority : incoming.headers.host) || defaultHostname;
+  if (!host) {
+    throw new RequestError("Missing host header");
+  }
+  let scheme;
+  if (incoming instanceof Http2ServerRequest) {
+    scheme = incoming.scheme;
+    if (!(scheme === "http" || scheme === "https")) {
+      throw new RequestError("Unsupported scheme");
+    }
+  } else {
+    scheme = incoming.socket && incoming.socket.encrypted ? "https" : "http";
+  }
+  const url2 = new URL(`${scheme}://${host}${incomingUrl}`);
+  if (url2.hostname.length !== host.length && url2.hostname !== host.replace(/:\d+$/, "")) {
+    throw new RequestError("Invalid host header");
+  }
+  req[urlKey] = url2.href;
+  return req;
+};
+var responseCache = Symbol("responseCache");
+var getResponseCache = Symbol("getResponseCache");
+var cacheKey = Symbol("cache");
+var GlobalResponse = global.Response;
+var Response2 = class _Response {
+  #body;
+  #init;
+  [getResponseCache]() {
+    delete this[cacheKey];
+    return this[responseCache] ||= new GlobalResponse(this.#body, this.#init);
+  }
+  constructor(body, init) {
+    let headers;
+    this.#body = body;
+    if (init instanceof _Response) {
+      const cachedGlobalResponse = init[responseCache];
+      if (cachedGlobalResponse) {
+        this.#init = cachedGlobalResponse;
+        this[getResponseCache]();
+        return;
+      } else {
+        this.#init = init.#init;
+        headers = new Headers(init.#init.headers);
+      }
+    } else {
+      this.#init = init;
+    }
+    if (typeof body === "string" || typeof body?.getReader !== "undefined" || body instanceof Blob || body instanceof Uint8Array) {
+      headers ||= init?.headers || { "content-type": "text/plain; charset=UTF-8" };
+      this[cacheKey] = [init?.status || 200, body, headers];
+    }
+  }
+  get headers() {
+    const cache = this[cacheKey];
+    if (cache) {
+      if (!(cache[2] instanceof Headers)) {
+        cache[2] = new Headers(cache[2]);
+      }
+      return cache[2];
+    }
+    return this[getResponseCache]().headers;
+  }
+  get status() {
+    return this[cacheKey]?.[0] ?? this[getResponseCache]().status;
+  }
+  get ok() {
+    const status = this.status;
+    return status >= 200 && status < 300;
+  }
+};
+["body", "bodyUsed", "redirected", "statusText", "trailers", "type", "url"].forEach((k) => {
+  Object.defineProperty(Response2.prototype, k, {
+    get() {
+      return this[getResponseCache]()[k];
+    }
+  });
+});
+["arrayBuffer", "blob", "clone", "formData", "json", "text"].forEach((k) => {
+  Object.defineProperty(Response2.prototype, k, {
+    value: function() {
+      return this[getResponseCache]()[k]();
+    }
+  });
+});
+Object.setPrototypeOf(Response2, GlobalResponse);
+Object.setPrototypeOf(Response2.prototype, GlobalResponse.prototype);
+async function readWithoutBlocking(readPromise) {
+  return Promise.race([readPromise, Promise.resolve().then(() => Promise.resolve(undefined))]);
+}
+function writeFromReadableStreamDefaultReader(reader, writable, currentReadPromise) {
+  const cancel = (error2) => {
+    reader.cancel(error2).catch(() => {});
+  };
+  writable.on("close", cancel);
+  writable.on("error", cancel);
+  (currentReadPromise ?? reader.read()).then(flow, handleStreamError);
+  return reader.closed.finally(() => {
+    writable.off("close", cancel);
+    writable.off("error", cancel);
+  });
+  function handleStreamError(error2) {
+    if (error2) {
+      writable.destroy(error2);
+    }
+  }
+  function onDrain() {
+    reader.read().then(flow, handleStreamError);
+  }
+  function flow({ done, value }) {
+    try {
+      if (done) {
+        writable.end();
+      } else if (!writable.write(value)) {
+        writable.once("drain", onDrain);
+      } else {
+        return reader.read().then(flow, handleStreamError);
+      }
+    } catch (e) {
+      handleStreamError(e);
+    }
+  }
+}
+function writeFromReadableStream(stream, writable) {
+  if (stream.locked) {
+    throw new TypeError("ReadableStream is locked.");
+  } else if (writable.destroyed) {
+    return;
+  }
+  return writeFromReadableStreamDefaultReader(stream.getReader(), writable);
+}
+var buildOutgoingHttpHeaders = (headers) => {
+  const res = {};
+  if (!(headers instanceof Headers)) {
+    headers = new Headers(headers ?? undefined);
+  }
+  const cookies = [];
+  for (const [k, v] of headers) {
+    if (k === "set-cookie") {
+      cookies.push(v);
+    } else {
+      res[k] = v;
+    }
+  }
+  if (cookies.length > 0) {
+    res["set-cookie"] = cookies;
+  }
+  res["content-type"] ??= "text/plain; charset=UTF-8";
+  return res;
+};
+var X_ALREADY_SENT = "x-hono-already-sent";
+if (typeof global.crypto === "undefined") {
+  global.crypto = crypto2;
+}
+var outgoingEnded = Symbol("outgoingEnded");
+var handleRequestError = () => new Response(null, {
+  status: 400
+});
+var handleFetchError = (e) => new Response(null, {
+  status: e instanceof Error && (e.name === "TimeoutError" || e.constructor.name === "TimeoutError") ? 504 : 500
+});
+var handleResponseError = (e, outgoing) => {
+  const err = e instanceof Error ? e : new Error("unknown error", { cause: e });
+  if (err.code === "ERR_STREAM_PREMATURE_CLOSE") {
+    console.info("The user aborted a request.");
+  } else {
+    console.error(e);
+    if (!outgoing.headersSent) {
+      outgoing.writeHead(500, { "Content-Type": "text/plain" });
+    }
+    outgoing.end(`Error: ${err.message}`);
+    outgoing.destroy(err);
+  }
+};
+var flushHeaders = (outgoing) => {
+  if ("flushHeaders" in outgoing && outgoing.writable) {
+    outgoing.flushHeaders();
+  }
+};
+var responseViaCache = async (res, outgoing) => {
+  let [status, body, header] = res[cacheKey];
+  if (header instanceof Headers) {
+    header = buildOutgoingHttpHeaders(header);
+  }
+  if (typeof body === "string") {
+    header["Content-Length"] = Buffer.byteLength(body);
+  } else if (body instanceof Uint8Array) {
+    header["Content-Length"] = body.byteLength;
+  } else if (body instanceof Blob) {
+    header["Content-Length"] = body.size;
+  }
+  outgoing.writeHead(status, header);
+  if (typeof body === "string" || body instanceof Uint8Array) {
+    outgoing.end(body);
+  } else if (body instanceof Blob) {
+    outgoing.end(new Uint8Array(await body.arrayBuffer()));
+  } else {
+    flushHeaders(outgoing);
+    await writeFromReadableStream(body, outgoing)?.catch((e) => handleResponseError(e, outgoing));
+  }
+  outgoing[outgoingEnded]?.();
+};
+var isPromise = (res) => typeof res.then === "function";
+var responseViaResponseObject = async (res, outgoing, options = {}) => {
+  if (isPromise(res)) {
+    if (options.errorHandler) {
+      try {
+        res = await res;
+      } catch (err) {
+        const errRes = await options.errorHandler(err);
+        if (!errRes) {
+          return;
+        }
+        res = errRes;
+      }
+    } else {
+      res = await res.catch(handleFetchError);
+    }
+  }
+  if (cacheKey in res) {
+    return responseViaCache(res, outgoing);
+  }
+  const resHeaderRecord = buildOutgoingHttpHeaders(res.headers);
+  if (res.body) {
+    const reader = res.body.getReader();
+    const values = [];
+    let done = false;
+    let currentReadPromise = undefined;
+    if (resHeaderRecord["transfer-encoding"] !== "chunked") {
+      let maxReadCount = 2;
+      for (let i = 0;i < maxReadCount; i++) {
+        currentReadPromise ||= reader.read();
+        const chunk = await readWithoutBlocking(currentReadPromise).catch((e) => {
+          console.error(e);
+          done = true;
+        });
+        if (!chunk) {
+          if (i === 1) {
+            await new Promise((resolve) => setTimeout(resolve));
+            maxReadCount = 3;
+            continue;
+          }
+          break;
+        }
+        currentReadPromise = undefined;
+        if (chunk.value) {
+          values.push(chunk.value);
+        }
+        if (chunk.done) {
+          done = true;
+          break;
+        }
+      }
+      if (done && !("content-length" in resHeaderRecord)) {
+        resHeaderRecord["content-length"] = values.reduce((acc, value) => acc + value.length, 0);
+      }
+    }
+    outgoing.writeHead(res.status, resHeaderRecord);
+    values.forEach((value) => {
+      outgoing.write(value);
+    });
+    if (done) {
+      outgoing.end();
+    } else {
+      if (values.length === 0) {
+        flushHeaders(outgoing);
+      }
+      await writeFromReadableStreamDefaultReader(reader, outgoing, currentReadPromise);
+    }
+  } else if (resHeaderRecord[X_ALREADY_SENT]) {} else {
+    outgoing.writeHead(res.status, resHeaderRecord);
+    outgoing.end();
+  }
+  outgoing[outgoingEnded]?.();
+};
+var getRequestListener = (fetchCallback, options = {}) => {
+  const autoCleanupIncoming = options.autoCleanupIncoming ?? true;
+  if (options.overrideGlobalObjects !== false && global.Request !== Request) {
+    Object.defineProperty(global, "Request", {
+      value: Request
+    });
+    Object.defineProperty(global, "Response", {
+      value: Response2
+    });
+  }
+  return async (incoming, outgoing) => {
+    let res, req;
+    try {
+      req = newRequest(incoming, options.hostname);
+      let incomingEnded = !autoCleanupIncoming || incoming.method === "GET" || incoming.method === "HEAD";
+      if (!incomingEnded) {
+        incoming[wrapBodyStream] = true;
+        incoming.on("end", () => {
+          incomingEnded = true;
+        });
+        if (incoming instanceof Http2ServerRequest2) {
+          outgoing[outgoingEnded] = () => {
+            if (!incomingEnded) {
+              setTimeout(() => {
+                if (!incomingEnded) {
+                  setTimeout(() => {
+                    incoming.destroy();
+                    outgoing.destroy();
+                  });
+                }
+              });
+            }
+          };
+        }
+      }
+      outgoing.on("close", () => {
+        const abortController = req[abortControllerKey];
+        if (abortController) {
+          if (incoming.errored) {
+            req[abortControllerKey].abort(incoming.errored.toString());
+          } else if (!outgoing.writableFinished) {
+            req[abortControllerKey].abort("Client connection prematurely closed.");
+          }
+        }
+        if (!incomingEnded) {
+          setTimeout(() => {
+            if (!incomingEnded) {
+              setTimeout(() => {
+                incoming.destroy();
+              });
+            }
+          });
+        }
+      });
+      res = fetchCallback(req, { incoming, outgoing });
+      if (cacheKey in res) {
+        return responseViaCache(res, outgoing);
+      }
+    } catch (e) {
+      if (!res) {
+        if (options.errorHandler) {
+          res = await options.errorHandler(req ? e : toRequestError(e));
+          if (!res) {
+            return;
+          }
+        } else if (!req) {
+          res = handleRequestError();
+        } else {
+          res = handleFetchError(e);
+        }
+      } else {
+        return handleResponseError(e, outgoing);
+      }
+    }
+    try {
+      return await responseViaResponseObject(res, outgoing, options);
+    } catch (e) {
+      return handleResponseError(e, outgoing);
+    }
+  };
+};
+
+// node_modules/@modelcontextprotocol/sdk/dist/esm/server/webStandardStreamableHttp.js
+class WebStandardStreamableHTTPServerTransport {
+  constructor(options = {}) {
+    this._started = false;
+    this._streamMapping = new Map;
+    this._requestToStreamMapping = new Map;
+    this._requestResponseMap = new Map;
+    this._initialized = false;
+    this._enableJsonResponse = false;
+    this._standaloneSseStreamId = "_GET_stream";
+    this.sessionIdGenerator = options.sessionIdGenerator;
+    this._enableJsonResponse = options.enableJsonResponse ?? false;
+    this._eventStore = options.eventStore;
+    this._onsessioninitialized = options.onsessioninitialized;
+    this._onsessionclosed = options.onsessionclosed;
+    this._allowedHosts = options.allowedHosts;
+    this._allowedOrigins = options.allowedOrigins;
+    this._enableDnsRebindingProtection = options.enableDnsRebindingProtection ?? false;
+    this._retryInterval = options.retryInterval;
+  }
+  async start() {
+    if (this._started) {
+      throw new Error("Transport already started");
+    }
+    this._started = true;
+  }
+  createJsonErrorResponse(status, code, message, options) {
+    const error2 = { code, message };
+    if (options?.data !== undefined) {
+      error2.data = options.data;
+    }
+    return new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      error: error2,
+      id: null
+    }), {
+      status,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers
+      }
+    });
+  }
+  validateRequestHeaders(req) {
+    if (!this._enableDnsRebindingProtection) {
+      return;
+    }
+    if (this._allowedHosts && this._allowedHosts.length > 0) {
+      const hostHeader = req.headers.get("host");
+      if (!hostHeader || !this._allowedHosts.includes(hostHeader)) {
+        const error2 = `Invalid Host header: ${hostHeader}`;
+        this.onerror?.(new Error(error2));
+        return this.createJsonErrorResponse(403, -32000, error2);
+      }
+    }
+    if (this._allowedOrigins && this._allowedOrigins.length > 0) {
+      const originHeader = req.headers.get("origin");
+      if (originHeader && !this._allowedOrigins.includes(originHeader)) {
+        const error2 = `Invalid Origin header: ${originHeader}`;
+        this.onerror?.(new Error(error2));
+        return this.createJsonErrorResponse(403, -32000, error2);
+      }
+    }
+    return;
+  }
+  async handleRequest(req, options) {
+    const validationError = this.validateRequestHeaders(req);
+    if (validationError) {
+      return validationError;
+    }
+    switch (req.method) {
+      case "POST":
+        return this.handlePostRequest(req, options);
+      case "GET":
+        return this.handleGetRequest(req);
+      case "DELETE":
+        return this.handleDeleteRequest(req);
+      default:
+        return this.handleUnsupportedRequest();
+    }
+  }
+  async writePrimingEvent(controller, encoder, streamId, protocolVersion) {
+    if (!this._eventStore) {
+      return;
+    }
+    if (protocolVersion < "2025-11-25") {
+      return;
+    }
+    const primingEventId = await this._eventStore.storeEvent(streamId, {});
+    let primingEvent = `id: ${primingEventId}
+data: 
+
+`;
+    if (this._retryInterval !== undefined) {
+      primingEvent = `id: ${primingEventId}
+retry: ${this._retryInterval}
+data: 
+
+`;
+    }
+    controller.enqueue(encoder.encode(primingEvent));
+  }
+  async handleGetRequest(req) {
+    const acceptHeader = req.headers.get("accept");
+    if (!acceptHeader?.includes("text/event-stream")) {
+      return this.createJsonErrorResponse(406, -32000, "Not Acceptable: Client must accept text/event-stream");
+    }
+    const sessionError = this.validateSession(req);
+    if (sessionError) {
+      return sessionError;
+    }
+    const protocolError = this.validateProtocolVersion(req);
+    if (protocolError) {
+      return protocolError;
+    }
+    if (this._eventStore) {
+      const lastEventId = req.headers.get("last-event-id");
+      if (lastEventId) {
+        return this.replayEvents(lastEventId);
+      }
+    }
+    if (this._streamMapping.get(this._standaloneSseStreamId) !== undefined) {
+      return this.createJsonErrorResponse(409, -32000, "Conflict: Only one SSE stream is allowed per session");
+    }
+    const encoder = new TextEncoder;
+    let streamController;
+    const readable = new ReadableStream({
+      start: (controller) => {
+        streamController = controller;
+      },
+      cancel: () => {
+        this._streamMapping.delete(this._standaloneSseStreamId);
+      }
+    });
+    const headers = {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive"
+    };
+    if (this.sessionId !== undefined) {
+      headers["mcp-session-id"] = this.sessionId;
+    }
+    this._streamMapping.set(this._standaloneSseStreamId, {
+      controller: streamController,
+      encoder,
+      cleanup: () => {
+        this._streamMapping.delete(this._standaloneSseStreamId);
+        try {
+          streamController.close();
+        } catch {}
+      }
+    });
+    return new Response(readable, { headers });
+  }
+  async replayEvents(lastEventId) {
+    if (!this._eventStore) {
+      return this.createJsonErrorResponse(400, -32000, "Event store not configured");
+    }
+    try {
+      let streamId;
+      if (this._eventStore.getStreamIdForEventId) {
+        streamId = await this._eventStore.getStreamIdForEventId(lastEventId);
+        if (!streamId) {
+          return this.createJsonErrorResponse(400, -32000, "Invalid event ID format");
+        }
+        if (this._streamMapping.get(streamId) !== undefined) {
+          return this.createJsonErrorResponse(409, -32000, "Conflict: Stream already has an active connection");
+        }
+      }
+      const headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive"
+      };
+      if (this.sessionId !== undefined) {
+        headers["mcp-session-id"] = this.sessionId;
+      }
+      const encoder = new TextEncoder;
+      let streamController;
+      const readable = new ReadableStream({
+        start: (controller) => {
+          streamController = controller;
+        },
+        cancel: () => {}
+      });
+      const replayedStreamId = await this._eventStore.replayEventsAfter(lastEventId, {
+        send: async (eventId, message) => {
+          const success = this.writeSSEEvent(streamController, encoder, message, eventId);
+          if (!success) {
+            this.onerror?.(new Error("Failed replay events"));
+            try {
+              streamController.close();
+            } catch {}
+          }
+        }
+      });
+      this._streamMapping.set(replayedStreamId, {
+        controller: streamController,
+        encoder,
+        cleanup: () => {
+          this._streamMapping.delete(replayedStreamId);
+          try {
+            streamController.close();
+          } catch {}
+        }
+      });
+      return new Response(readable, { headers });
+    } catch (error2) {
+      this.onerror?.(error2);
+      return this.createJsonErrorResponse(500, -32000, "Error replaying events");
+    }
+  }
+  writeSSEEvent(controller, encoder, message, eventId) {
+    try {
+      let eventData = `event: message
+`;
+      if (eventId) {
+        eventData += `id: ${eventId}
+`;
+      }
+      eventData += `data: ${JSON.stringify(message)}
+
+`;
+      controller.enqueue(encoder.encode(eventData));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  handleUnsupportedRequest() {
+    return new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: "Method not allowed."
+      },
+      id: null
+    }), {
+      status: 405,
+      headers: {
+        Allow: "GET, POST, DELETE",
+        "Content-Type": "application/json"
+      }
+    });
+  }
+  async handlePostRequest(req, options) {
+    try {
+      const acceptHeader = req.headers.get("accept");
+      if (!acceptHeader?.includes("application/json") || !acceptHeader.includes("text/event-stream")) {
+        return this.createJsonErrorResponse(406, -32000, "Not Acceptable: Client must accept both application/json and text/event-stream");
+      }
+      const ct = req.headers.get("content-type");
+      if (!ct || !ct.includes("application/json")) {
+        return this.createJsonErrorResponse(415, -32000, "Unsupported Media Type: Content-Type must be application/json");
+      }
+      const requestInfo = {
+        headers: Object.fromEntries(req.headers.entries())
+      };
+      let rawMessage;
+      if (options?.parsedBody !== undefined) {
+        rawMessage = options.parsedBody;
+      } else {
+        try {
+          rawMessage = await req.json();
+        } catch {
+          return this.createJsonErrorResponse(400, -32700, "Parse error: Invalid JSON");
+        }
+      }
+      let messages;
+      try {
+        if (Array.isArray(rawMessage)) {
+          messages = rawMessage.map((msg) => JSONRPCMessageSchema.parse(msg));
+        } else {
+          messages = [JSONRPCMessageSchema.parse(rawMessage)];
+        }
+      } catch {
+        return this.createJsonErrorResponse(400, -32700, "Parse error: Invalid JSON-RPC message");
+      }
+      const isInitializationRequest = messages.some(isInitializeRequest);
+      if (isInitializationRequest) {
+        if (this._initialized && this.sessionId !== undefined) {
+          return this.createJsonErrorResponse(400, -32600, "Invalid Request: Server already initialized");
+        }
+        if (messages.length > 1) {
+          return this.createJsonErrorResponse(400, -32600, "Invalid Request: Only one initialization request is allowed");
+        }
+        this.sessionId = this.sessionIdGenerator?.();
+        this._initialized = true;
+        if (this.sessionId && this._onsessioninitialized) {
+          await Promise.resolve(this._onsessioninitialized(this.sessionId));
+        }
+      }
+      if (!isInitializationRequest) {
+        const sessionError = this.validateSession(req);
+        if (sessionError) {
+          return sessionError;
+        }
+        const protocolError = this.validateProtocolVersion(req);
+        if (protocolError) {
+          return protocolError;
+        }
+      }
+      const hasRequests = messages.some(isJSONRPCRequest);
+      if (!hasRequests) {
+        for (const message of messages) {
+          this.onmessage?.(message, { authInfo: options?.authInfo, requestInfo });
+        }
+        return new Response(null, { status: 202 });
+      }
+      const streamId = crypto.randomUUID();
+      const initRequest = messages.find((m) => isInitializeRequest(m));
+      const clientProtocolVersion = initRequest ? initRequest.params.protocolVersion : req.headers.get("mcp-protocol-version") ?? DEFAULT_NEGOTIATED_PROTOCOL_VERSION;
+      if (this._enableJsonResponse) {
+        return new Promise((resolve) => {
+          this._streamMapping.set(streamId, {
+            resolveJson: resolve,
+            cleanup: () => {
+              this._streamMapping.delete(streamId);
+            }
+          });
+          for (const message of messages) {
+            if (isJSONRPCRequest(message)) {
+              this._requestToStreamMapping.set(message.id, streamId);
+            }
+          }
+          for (const message of messages) {
+            this.onmessage?.(message, { authInfo: options?.authInfo, requestInfo });
+          }
+        });
+      }
+      const encoder = new TextEncoder;
+      let streamController;
+      const readable = new ReadableStream({
+        start: (controller) => {
+          streamController = controller;
+        },
+        cancel: () => {
+          this._streamMapping.delete(streamId);
+        }
+      });
+      const headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive"
+      };
+      if (this.sessionId !== undefined) {
+        headers["mcp-session-id"] = this.sessionId;
+      }
+      for (const message of messages) {
+        if (isJSONRPCRequest(message)) {
+          this._streamMapping.set(streamId, {
+            controller: streamController,
+            encoder,
+            cleanup: () => {
+              this._streamMapping.delete(streamId);
+              try {
+                streamController.close();
+              } catch {}
+            }
+          });
+          this._requestToStreamMapping.set(message.id, streamId);
+        }
+      }
+      await this.writePrimingEvent(streamController, encoder, streamId, clientProtocolVersion);
+      for (const message of messages) {
+        let closeSSEStream;
+        let closeStandaloneSSEStream;
+        if (isJSONRPCRequest(message) && this._eventStore && clientProtocolVersion >= "2025-11-25") {
+          closeSSEStream = () => {
+            this.closeSSEStream(message.id);
+          };
+          closeStandaloneSSEStream = () => {
+            this.closeStandaloneSSEStream();
+          };
+        }
+        this.onmessage?.(message, { authInfo: options?.authInfo, requestInfo, closeSSEStream, closeStandaloneSSEStream });
+      }
+      return new Response(readable, { status: 200, headers });
+    } catch (error2) {
+      this.onerror?.(error2);
+      return this.createJsonErrorResponse(400, -32700, "Parse error", { data: String(error2) });
+    }
+  }
+  async handleDeleteRequest(req) {
+    const sessionError = this.validateSession(req);
+    if (sessionError) {
+      return sessionError;
+    }
+    const protocolError = this.validateProtocolVersion(req);
+    if (protocolError) {
+      return protocolError;
+    }
+    await Promise.resolve(this._onsessionclosed?.(this.sessionId));
+    await this.close();
+    return new Response(null, { status: 200 });
+  }
+  validateSession(req) {
+    if (this.sessionIdGenerator === undefined) {
+      return;
+    }
+    if (!this._initialized) {
+      return this.createJsonErrorResponse(400, -32000, "Bad Request: Server not initialized");
+    }
+    const sessionId = req.headers.get("mcp-session-id");
+    if (!sessionId) {
+      return this.createJsonErrorResponse(400, -32000, "Bad Request: Mcp-Session-Id header is required");
+    }
+    if (sessionId !== this.sessionId) {
+      return this.createJsonErrorResponse(404, -32001, "Session not found");
+    }
+    return;
+  }
+  validateProtocolVersion(req) {
+    const protocolVersion = req.headers.get("mcp-protocol-version");
+    if (protocolVersion !== null && !SUPPORTED_PROTOCOL_VERSIONS.includes(protocolVersion)) {
+      return this.createJsonErrorResponse(400, -32000, `Bad Request: Unsupported protocol version: ${protocolVersion} (supported versions: ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")})`);
+    }
+    return;
+  }
+  async close() {
+    this._streamMapping.forEach(({ cleanup }) => {
+      cleanup();
+    });
+    this._streamMapping.clear();
+    this._requestResponseMap.clear();
+    this.onclose?.();
+  }
+  closeSSEStream(requestId) {
+    const streamId = this._requestToStreamMapping.get(requestId);
+    if (!streamId)
+      return;
+    const stream = this._streamMapping.get(streamId);
+    if (stream) {
+      stream.cleanup();
+    }
+  }
+  closeStandaloneSSEStream() {
+    const stream = this._streamMapping.get(this._standaloneSseStreamId);
+    if (stream) {
+      stream.cleanup();
+    }
+  }
+  async send(message, options) {
+    let requestId = options?.relatedRequestId;
+    if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
+      requestId = message.id;
+    }
+    if (requestId === undefined) {
+      if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
+        throw new Error("Cannot send a response on a standalone SSE stream unless resuming a previous client request");
+      }
+      let eventId;
+      if (this._eventStore) {
+        eventId = await this._eventStore.storeEvent(this._standaloneSseStreamId, message);
+      }
+      const standaloneSse = this._streamMapping.get(this._standaloneSseStreamId);
+      if (standaloneSse === undefined) {
+        return;
+      }
+      if (standaloneSse.controller && standaloneSse.encoder) {
+        this.writeSSEEvent(standaloneSse.controller, standaloneSse.encoder, message, eventId);
+      }
+      return;
+    }
+    const streamId = this._requestToStreamMapping.get(requestId);
+    if (!streamId) {
+      throw new Error(`No connection established for request ID: ${String(requestId)}`);
+    }
+    const stream = this._streamMapping.get(streamId);
+    if (!this._enableJsonResponse && stream?.controller && stream?.encoder) {
+      let eventId;
+      if (this._eventStore) {
+        eventId = await this._eventStore.storeEvent(streamId, message);
+      }
+      this.writeSSEEvent(stream.controller, stream.encoder, message, eventId);
+    }
+    if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
+      this._requestResponseMap.set(requestId, message);
+      const relatedIds = Array.from(this._requestToStreamMapping.entries()).filter(([_, sid]) => sid === streamId).map(([id]) => id);
+      const allResponsesReady = relatedIds.every((id) => this._requestResponseMap.has(id));
+      if (allResponsesReady) {
+        if (!stream) {
+          throw new Error(`No connection established for request ID: ${String(requestId)}`);
+        }
+        if (this._enableJsonResponse && stream.resolveJson) {
+          const headers = {
+            "Content-Type": "application/json"
+          };
+          if (this.sessionId !== undefined) {
+            headers["mcp-session-id"] = this.sessionId;
+          }
+          const responses = relatedIds.map((id) => this._requestResponseMap.get(id));
+          if (responses.length === 1) {
+            stream.resolveJson(new Response(JSON.stringify(responses[0]), { status: 200, headers }));
+          } else {
+            stream.resolveJson(new Response(JSON.stringify(responses), { status: 200, headers }));
+          }
+        } else {
+          stream.cleanup();
+        }
+        for (const id of relatedIds) {
+          this._requestResponseMap.delete(id);
+          this._requestToStreamMapping.delete(id);
+        }
+      }
+    }
+  }
+}
+
+// node_modules/@modelcontextprotocol/sdk/dist/esm/server/streamableHttp.js
+class StreamableHTTPServerTransport {
+  constructor(options = {}) {
+    this._requestContext = new WeakMap;
+    this._webStandardTransport = new WebStandardStreamableHTTPServerTransport(options);
+    this._requestListener = getRequestListener(async (webRequest) => {
+      const context = this._requestContext.get(webRequest);
+      return this._webStandardTransport.handleRequest(webRequest, {
+        authInfo: context?.authInfo,
+        parsedBody: context?.parsedBody
+      });
+    });
+  }
+  get sessionId() {
+    return this._webStandardTransport.sessionId;
+  }
+  set onclose(handler) {
+    this._webStandardTransport.onclose = handler;
+  }
+  get onclose() {
+    return this._webStandardTransport.onclose;
+  }
+  set onerror(handler) {
+    this._webStandardTransport.onerror = handler;
+  }
+  get onerror() {
+    return this._webStandardTransport.onerror;
+  }
+  set onmessage(handler) {
+    this._webStandardTransport.onmessage = handler;
+  }
+  get onmessage() {
+    return this._webStandardTransport.onmessage;
+  }
+  async start() {
+    return this._webStandardTransport.start();
+  }
+  async close() {
+    return this._webStandardTransport.close();
+  }
+  async send(message, options) {
+    return this._webStandardTransport.send(message, options);
+  }
+  async handleRequest(req, res, parsedBody) {
+    const authInfo = req.auth;
+    const handler = getRequestListener(async (webRequest) => {
+      return this._webStandardTransport.handleRequest(webRequest, {
+        authInfo,
+        parsedBody
+      });
+    });
+    await handler(req, res);
+  }
+  closeSSEStream(requestId) {
+    this._webStandardTransport.closeSSEStream(requestId);
+  }
+  closeStandaloneSSEStream() {
+    this._webStandardTransport.closeStandaloneSSEStream();
+  }
+}
+
+// src/config.ts
 import { readFileSync, existsSync, watch } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+var DEFAULT_CONFIG_PATH = join(homedir(), ".config", "mcp-gateway", "config.json");
+
+class Config {
+  config;
+  configPath;
+  watcher;
+  constructor(path) {
+    this.configPath = path || process.env.MCP_GATEWAY_CONFIG || DEFAULT_CONFIG_PATH;
+    this.config = this.load();
+  }
+  get(key) {
+    return this.config[key];
+  }
+  getAll() {
+    return { ...this.config };
+  }
+  set(key, value) {
+    this.config[key] = value;
+  }
+  getPath() {
+    return this.configPath;
+  }
+  reload() {
+    this.config = this.load();
+    return this.config;
+  }
+  watch(callback) {
+    if (this.watcher)
+      return;
+    this.watcher = watch(this.configPath, (event) => {
+      if (event !== "change")
+        return;
+      this.reload();
+      callback(this.config);
+    });
+    console.error(`  Watching config: ${this.configPath}`);
+  }
+  stopWatching() {
+    this.watcher?.close();
+    this.watcher = undefined;
+  }
+  load() {
+    if (!existsSync(this.configPath))
+      return {};
+    return JSON.parse(readFileSync(this.configPath, "utf-8"));
+  }
+}
 
 // node_modules/minisearch/dist/es/index.js
 var ENTRIES = "ENTRIES";
@@ -22315,10 +23448,10 @@ function createFetchWithInit(baseFetch = fetch, baseInit) {
 }
 
 // node_modules/pkce-challenge/dist/index.node.js
-var crypto;
-crypto = globalThis.crypto?.webcrypto ?? globalThis.crypto ?? import("node:crypto").then((m) => m.webcrypto);
+var crypto3;
+crypto3 = globalThis.crypto?.webcrypto ?? globalThis.crypto ?? import("node:crypto").then((m) => m.webcrypto);
 async function getRandomValues(size) {
-  return (await crypto).getRandomValues(new Uint8Array(size));
+  return (await crypto3).getRandomValues(new Uint8Array(size));
 }
 async function random(size) {
   const mask = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
@@ -22338,7 +23471,7 @@ async function generateVerifier(length) {
   return await random(length);
 }
 async function generateChallenge(code_verifier) {
-  const buffer = await (await crypto).subtle.digest("SHA-256", new TextEncoder().encode(code_verifier));
+  const buffer = await (await crypto3).subtle.digest("SHA-256", new TextEncoder().encode(code_verifier));
   return btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\//g, "_").replace(/\+/g, "-").replace(/=/g, "");
 }
 async function pkceChallenge(length) {
@@ -23746,6 +24879,37 @@ class ConnectionManager {
     return Array.from(this.upstreams.keys());
   }
 }
+// package.json
+var package_default = {
+  name: "mcp-gateway",
+  version: "1.3.0",
+  description: "MCP Gateway - Aggregate multiple MCP servers into a single gateway",
+  type: "module",
+  bin: {
+    "mcp-gateway": "./dist/index.js"
+  },
+  scripts: {
+    start: "bun run src/index.ts",
+    "start:docker": "bun run src/docker.ts",
+    build: "bun build src/index.ts --outdir dist --target node",
+    "build:docker": "bun build src/docker.ts --target bun --outfile=gateway",
+    "docker:build": "docker build -t mcp-gateway .",
+    "docker:run": "docker run -p 3000:3000 -v ./examples/config.json:/home/gateway/.config/mcp-gateway/config.json:ro mcp-gateway"
+  },
+  devDependencies: {
+    "@types/bun": "latest",
+    "@types/node": "^25.0.9",
+    typescript: "^5.9.3"
+  },
+  peerDependencies: {
+    typescript: "^5.9.3"
+  },
+  dependencies: {
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "lru-cache": "^11.2.4",
+    minisearch: "^7.2.0"
+  }
+};
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/server.js
 class ExperimentalServerTasks {
@@ -24911,7 +26075,7 @@ var EMPTY_COMPLETION_RESULT = {
 
 // src/handlers.ts
 function createServer(searchEngine, connections, jobManager) {
-  const server = new McpServer({ name: "mcp-gateway", version: "1.0.0" });
+  const server = new McpServer({ name: "mcp-gateway", version: package_default.version });
   server.registerTool("gateway.search", {
     title: "Search Tools",
     description: "Search for tools across all connected MCP servers with BM25 scoring and fuzzy matching",
@@ -24988,102 +26152,101 @@ function createServer(searchEngine, connections, jobManager) {
   return server;
 }
 
-// index.ts
-var DEFAULT_CONFIG_PATH = join(homedir(), ".config", "mcp-gateway", "config.json");
-function loadConfig(path) {
-  if (!existsSync(path))
-    return {};
-  return JSON.parse(readFileSync(path, "utf-8"));
-}
-
+// src/gateway.ts
 class MCPGateway {
   config;
-  configPath;
-  searchEngine = new SearchEngine;
-  jobManager = new JobManager;
+  searchEngine;
+  jobManager;
   connections;
   server;
   constructor(configPath) {
-    this.configPath = configPath || process.env.MCP_GATEWAY_CONFIG || DEFAULT_CONFIG_PATH;
-    this.config = loadConfig(this.configPath);
+    this.config = new Config(configPath);
+    this.searchEngine = new SearchEngine;
+    this.jobManager = new JobManager;
     this.connections = new ConnectionManager(this.searchEngine, this.jobManager);
     this.server = createServer(this.searchEngine, this.connections, this.jobManager);
   }
-  async start() {
-    console.error("MCP Gateway starting...");
-    const connections = Object.entries(this.config).filter(([_, c]) => c.enabled !== false).map(([k, c]) => this.connections.connectWithRetry(k, c));
+  async connectAll() {
+    const allConfig = this.config.getAll();
+    const connections = Object.entries(allConfig).filter(([_, c]) => c.enabled !== false).map(([k, c]) => this.connections.connectWithRetry(k, c));
     const results = await Promise.allSettled(connections);
     let success = 0, failed = 0;
     for (const r of results)
       r.status === "fulfilled" ? success++ : failed++;
     this.searchEngine.warmup();
-    console.error(`Gateway ready: ${this.searchEngine.getTools().length} tools from ${success} servers (${failed} failed)`);
+    console.error(`Connected: ${this.searchEngine.getTools().length} tools from ${success} servers (${failed} failed)`);
+  }
+  async startWithStdio() {
+    console.error("MCP Gateway starting (stdio)...");
+    await this.connectAll();
     const transport = new StdioServerTransport;
     await this.server.connect(transport);
-    this.watchConfig();
+    this.config.watch((cfg) => this.handleConfigChange(cfg));
   }
-  watchConfig() {
-    if (!this.configPath)
-      return;
-    let timer = null;
-    watch(this.configPath, (event) => {
-      if (event !== "change")
-        return;
-      if (timer)
-        clearTimeout(timer);
-      timer = setTimeout(() => this.reloadConfig(), 1000);
+  async startWithHttp(port = 3000) {
+    console.error(`MCP Gateway starting (http://localhost:${port})...`);
+    await this.connectAll();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined
     });
-    console.error(`  Watching config: ${this.configPath}`);
+    await this.server.connect(transport);
+    this.config.watch((cfg) => this.handleConfigChange(cfg));
+    return transport;
   }
-  async reloadConfig() {
-    const newConfig = loadConfig(this.configPath);
-    const oldServers = new Set(Object.keys(this.config));
+  handleConfigChange(newConfig) {
+    const oldConfig = this.config.getAll();
+    const oldServers = new Set(Object.keys(oldConfig));
     const newServers = new Set(Object.keys(newConfig));
     const toRemove = [...oldServers].filter((s) => !newServers.has(s));
     const toAdd = [...newServers].filter((s) => !oldServers.has(s));
     const toUpdate = [...newServers].filter((s) => oldServers.has(s));
-    for (const key of toRemove) {
-      await this.connections.disconnect(key);
-      console.error(`    ${key} disconnected`);
-    }
-    for (const key of toUpdate) {
-      const oldC = this.config[key];
-      const newC = newConfig[key];
-      if (oldC && newC && oldC.enabled === false && newC.enabled !== false) {
-        try {
-          await this.connections.connectWithRetry(key, newC);
-          console.error(`    ${key} connected`);
-        } catch (e) {
-          console.error(`    ${key} failed: ${e.message}`);
+    const doReload = async () => {
+      for (const key of toRemove) {
+        await this.connections.disconnect(key);
+        console.error(`    ${key} disconnected`);
+      }
+      for (const key of toUpdate) {
+        const oldC = oldConfig[key];
+        const newC = newConfig[key];
+        if (oldC && newC && oldC.enabled === false && newC.enabled !== false) {
+          try {
+            await this.connections.connectWithRetry(key, newC);
+            console.error(`    ${key} connected`);
+          } catch (e) {
+            console.error(`    ${key} failed: ${e.message}`);
+          }
         }
       }
-    }
-    for (const key of toAdd) {
-      const c = newConfig[key];
-      if (c && c.enabled !== false) {
-        try {
-          await this.connections.connectWithRetry(key, c);
-          console.error(`    ${key} connected`);
-        } catch (e) {
-          console.error(`    ${key} failed: ${e.message}`);
+      for (const key of toAdd) {
+        const c = newConfig[key];
+        if (c && c.enabled !== false) {
+          try {
+            await this.connections.connectWithRetry(key, c);
+            console.error(`    ${key} connected`);
+          } catch (e) {
+            console.error(`    ${key} failed: ${e.message}`);
+          }
         }
       }
-    }
-    this.config = newConfig;
-    this.searchEngine.warmup();
-    console.error(`Reloaded: ${this.searchEngine.getTools().length} tools from ${this.connections.getConnectedServers().length} servers`);
+      this.searchEngine.warmup();
+      console.error(`Reloaded: ${this.searchEngine.getTools().length} tools from ${this.connections.getConnectedServers().length} servers`);
+    };
+    setTimeout(() => doReload(), 1000);
   }
-  async stop() {
+  async shutdown() {
     console.error("Shutting down gateway...");
+    this.config.stopWatching();
     await this.jobManager.shutdown();
     await this.connections.disconnectAll();
     console.error("Gateway shutdown complete");
   }
 }
+
+// src/index.ts
 var gateway = new MCPGateway(process.argv[2]);
-gateway.start().catch((err) => {
+gateway.startWithStdio().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
-process.on("SIGINT", () => gateway.stop().then(() => process.exit(0)));
-process.on("SIGTERM", () => gateway.stop().then(() => process.exit(0)));
+process.on("SIGINT", () => gateway.shutdown().then(() => process.exit(0)));
+process.on("SIGTERM", () => gateway.shutdown().then(() => process.exit(0)));
