@@ -44,7 +44,7 @@ export class MCPGateway {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
 
-
+    console.log(`__MCP_GATEWAY_STDIO_READY__`);
 
     this.connectAll().catch((err) => {
       console.error(`Background connection error: ${err.message}`);
