@@ -24784,6 +24784,20 @@ class WebSocketClientTransport {
 }
 
 // src/connections.ts
+function parseEnvironmentVariables(env) {
+  if (!env)
+    return;
+  const parsed = {};
+  const processEnv = process.env;
+  for (const [key, value] of Object.entries(env)) {
+    const substitutedValue = value.replace(/\{env:(\w+)\}/g, (_, envVarName) => {
+      return processEnv[envVarName] || "";
+    });
+    parsed[key] = substitutedValue;
+  }
+  return parsed;
+}
+
 class ConnectionManager {
   searchEngine;
   jobManager;
@@ -24803,7 +24817,12 @@ class ConnectionManager {
     const [cmd, ...args] = config2.command || [];
     if (!cmd)
       throw new Error(`Missing command for ${serverKey}`);
-    const transport = new StdioClientTransport({ command: cmd, args });
+    const env = parseEnvironmentVariables(config2.environment);
+    const transport = new StdioClientTransport({
+      command: cmd,
+      args,
+      env
+    });
     await this.connectTransport(serverKey, config2, transport);
   }
   async connectRemote(serverKey, config2) {
@@ -24882,7 +24901,7 @@ class ConnectionManager {
 // package.json
 var package_default = {
   name: "@eznix/mcp-gateway",
-  version: "1.3.5",
+  version: "1.3.6",
   description: "MCP Gateway - Aggregate multiple MCP servers into a single gateway",
   type: "module",
   bin: {

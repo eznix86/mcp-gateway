@@ -6,5 +6,24 @@
   "playwright": {
     "type": "local",
     "command": ["bunx", "@playwright/mcp@latest"]
+  },
+  "JupyterLab": {
+    "type": "local",
+    "command": ["uvx", "jupyter-mcp-server@latest"],
+    "environment": {
+      "JUPYTER_URL": "http://localhost:{env:JUPYTER_PORT}/",
+      "JUPYTER_TOKEN": "{env:JUPYTER_TOKEN}",
+      "ALLOW_IMG_OUTPUT": "true"
+    },
+    "enabled": true
+  },
+  "custom-server": {
+    "type": "local",
+    "command": ["python", "scripts/server.py"],
+    "environment": {
+      "API_KEY": "{env:API_KEY}",
+      "DEBUG": "true",
+      "DATABASE_URL": "postgresql://{env:DB_USER}:{env:DB_PASS}@localhost:5432/mydb"
+    }
   }
 }

@@ -124,7 +124,28 @@ Each entry specifies:
 - `command` (local only): Array with command and arguments to spawn the upstream server
 - `url` (remote only): Full URL of the remote MCP server
 - `transport` (optional, remote only): Override transport detection (`"streamable_http"` or `"websocket"`). Usually auto-detected from URL protocol.
+- `environment` (local only): Environment variables to pass to the spawned process, with `{env:VAR_NAME}` substitution support
 - `enabled`: Set to false to skip connecting to this server
+
+#### Environment Variables with Substitution
+
+Local MCP servers support environment variable substitution using `{env:VAR_NAME}` syntax:
+
+```json
+{
+  "jupyter-lab": {
+    "type": "local",
+    "command": ["uvx", "jupyter-mcp-server@latest"],
+    "environment": {
+      "JUPYTER_URL": "http://localhost:{env:JUPYTER_PORT}/",
+      "JUPYTER_TOKEN": "{env:JUPYTER_TOKEN}",
+      "DEBUG": "true"
+    }
+  }
+}
+```
+
+The `{env:VAR_NAME}` placeholders are resolved from the current process environment. If an environment variable is not set, it's replaced with an empty string.
 
 ### Docker
 

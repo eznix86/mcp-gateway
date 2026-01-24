@@ -6,6 +6,28 @@ import type { UpstreamConfig, ToolCatalogEntry } from "./types.js";
 import { SearchEngine } from "./search.js";
 import { JobManager } from "./jobs.js";
 
+/**
+ * Parse environment variables with {env:VAR_NAME} substitution.
+ * Replaces {env:VAR} with the corresponding value from process.env.
+ * If the environment variable is not set, the placeholder is replaced with an empty string.
+ */
+export function parseEnvironmentVariables(env?: Record<string, string>): Record<string, string> | undefined {
+  if (!env) return undefined;
+
+  const parsed: Record<string, string> = {};
+  const processEnv = process.env as Record<string, string>;
+
+  for (const [key, value] of Object.entries(env)) {
+    // Replace all {env:VAR_NAME} patterns with actual environment variable values
+    const substitutedValue = value.replace(/\{env:(\w+)\}/g, (_, envVarName: string) => {
+      return processEnv[envVarName] || "";
+    });
+    parsed[key] = substitutedValue;
+  }
+
+  return parsed;
+}
+
 export class ConnectionManager {
   private upstreams = new Map<string, Client>();
 
@@ -26,7 +48,14 @@ export class ConnectionManager {
     const [cmd, ...args] = config.command || [];
     if (!cmd) throw new Error(`Missing command for ${serverKey}`);
 
-    const transport = new StdioClientTransport({ command: cmd, args });
+    // Parse environment variables with {env:VAR_NAME} substitution
+    const env = parseEnvironmentVariables(config.environment);
+
+    const transport = new StdioClientTransport({
+      command: cmd,
+      args,
+      env
+    });
     await this.connectTransport(serverKey, config, transport);
   }
 

@@ -4,9 +4,10 @@ export interface UpstreamConfig {
   url?: string;
   transport?: "streamable_http" | "websocket";
   endpoint?: string;
+  environment?: Record<string, string>; // Environment variables with support for {env:VAR_NAME} substitution
   enabled?: boolean;
-  lazy?: boolean;  // if true, only connect on first request
-  idleTimeout?: number;  // milliseconds before sleeping (default: 2hrs)
+  lazy?: boolean; // if true, only connect on first request
+  idleTimeout?: number; // milliseconds before sleeping (default: 2hrs)
 }
 
 export interface GatewayConfig {
