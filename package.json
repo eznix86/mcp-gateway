@@ -1,6 +1,6 @@
 {
   "name": "mcp-gateway",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "MCP Gateway - Aggregate multiple MCP servers into a single gateway",
   "type": "module",
   "bin": {
