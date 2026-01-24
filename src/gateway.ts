@@ -40,10 +40,16 @@ export class MCPGateway {
 
   async startWithStdio(): Promise<void> {
     console.error("MCP Gateway starting (stdio)...");
-    await this.connectAll();
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
+
+
+
+    this.connectAll().catch((err) => {
+      console.error(`Background connection error: ${err.message}`);
+    });
+
     this.config.watch((cfg) => this.handleConfigChange(cfg));
   }
 
