@@ -24882,7 +24882,7 @@ class ConnectionManager {
 // package.json
 var package_default = {
   name: "@eznix/mcp-gateway",
-  version: "1.3.3",
+  version: "1.3.4",
   description: "MCP Gateway - Aggregate multiple MCP servers into a single gateway",
   type: "module",
   bin: {
@@ -24894,7 +24894,10 @@ var package_default = {
     build: "bun build src/index.ts --outdir dist --target node",
     "build:docker": "bun build src/docker.ts --target bun --outfile=gateway",
     "docker:build": "docker build -t mcp-gateway .",
-    "docker:run": "docker run -p 3000:3000 -v ./examples/config.json:/home/gateway/.config/mcp-gateway/config.json:ro mcp-gateway"
+    "docker:run": "docker run -p 3000:3000 -v ./examples/config.json:/home/gateway/.config/mcp-gateway/config.json:ro mcp-gateway",
+    preversion: "bun run build",
+    prepublishOnly: "bun run build",
+    postversion: 'git add dist && git commit -m "chore: update build" && git push'
   },
   devDependencies: {
     "@types/bun": "latest",
