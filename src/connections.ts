@@ -128,6 +128,12 @@ export class ConnectionManager {
   async disconnect(serverKey: string): Promise<void> {
     const client = this.upstreams.get(serverKey);
     if (client) {
+      // Remove all tools for this server from the search index
+      const tools = this.searchEngine.getTools().filter((t) => t.server === serverKey);
+      for (const tool of tools) {
+        this.searchEngine.removeTool(tool.id);
+      }
+      
       await client.close();
       this.upstreams.delete(serverKey);
     }

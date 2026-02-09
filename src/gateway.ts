@@ -50,7 +50,7 @@ export class MCPGateway {
       console.error(`Background connection error: ${err.message}`);
     });
 
-    this.config.watch((cfg) => this.handleConfigChange(cfg));
+    this.config.watch((oldCfg, newCfg) => this.handleConfigChange(oldCfg, newCfg));
   }
 
   async startWithHttp(port: number = 3000): Promise<StreamableHTTPServerTransport> {
@@ -61,13 +61,12 @@ export class MCPGateway {
       sessionIdGenerator: undefined,
     });
     await this.server.connect(transport);
-    this.config.watch((cfg) => this.handleConfigChange(cfg));
+    this.config.watch((oldCfg, newCfg) => this.handleConfigChange(oldCfg, newCfg));
 
     return transport;
   }
 
-  private handleConfigChange(newConfig: GatewayConfig): void {
-    const oldConfig = this.config.getAll();
+  private handleConfigChange(oldConfig: GatewayConfig, newConfig: GatewayConfig): void {
     const oldServers = new Set(Object.keys(oldConfig));
     const newServers = new Set(Object.keys(newConfig));
 
@@ -84,8 +83,37 @@ export class MCPGateway {
       for (const key of toUpdate) {
         const oldC = oldConfig[key];
         const newC = newConfig[key];
-        if (oldC && newC && oldC.enabled === false && newC.enabled !== false) {
-          try { await this.connections.connectWithRetry(key, newC); console.error(`    ${key} connected`); } catch (e: any) { console.error(`    ${key} failed: ${e.message}`); }
+        
+        // Handle disabling a server
+        if (oldC && oldC.enabled !== false && newC && newC.enabled === false) {
+          await this.connections.disconnect(key);
+          console.error(`    ${key} disabled`);
+          continue;
+        }
+        
+        // Handle enabling a previously disabled server
+        if (oldC && oldC.enabled === false && newC && newC.enabled !== false) {
+          try { 
+            await this.connections.connectWithRetry(key, newC); 
+            console.error(`    ${key} enabled`); 
+          } catch (e: any) { 
+            console.error(`    ${key} failed: ${e.message}`); 
+          }
+          continue;
+        }
+        
+        // Handle config changes for enabled servers (reconnect)
+        if (oldC && newC && oldC.enabled !== false && newC.enabled !== false) {
+          // Deep compare to detect any config changes
+          if (JSON.stringify(oldC) !== JSON.stringify(newC)) {
+            await this.connections.disconnect(key);
+            try {
+              await this.connections.connectWithRetry(key, newC);
+              console.error(`    ${key} reconnected (config changed)`);
+            } catch (e: any) {
+              console.error(`    ${key} failed: ${e.message}`);
+            }
+          }
         }
       }
 
