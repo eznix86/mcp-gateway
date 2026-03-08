@@ -14190,8 +14190,9 @@ class Config {
     this.watcher = watch(this.configPath, (event) => {
       if (event !== "change")
         return;
+      const oldConfig = this.getAll();
       this.reload();
-      callback(this.config);
+      callback(oldConfig, this.config);
     });
     console.error(`  Watching config: ${this.configPath}`);
   }
@@ -24885,6 +24886,10 @@ class ConnectionManager {
   async disconnect(serverKey) {
     const client = this.upstreams.get(serverKey);
     if (client) {
+      const tools = this.searchEngine.getTools().filter((t) => t.server === serverKey);
+      for (const tool of tools) {
+        this.searchEngine.removeTool(tool.id);
+      }
       await client.close();
       this.upstreams.delete(serverKey);
     }
@@ -24901,7 +24906,7 @@ class ConnectionManager {
 // package.json
 var package_default = {
   name: "@eznix/mcp-gateway",
-  version: "1.3.6",
+  version: "1.4.0",
   description: "MCP Gateway - Aggregate multiple MCP servers into a single gateway",
   type: "module",
   bin: {
@@ -26206,7 +26211,7 @@ class MCPGateway {
     this.connectAll().catch((err) => {
       console.error(`Background connection error: ${err.message}`);
     });
-    this.config.watch((cfg) => this.handleConfigChange(cfg));
+    this.config.watch((oldCfg, newCfg) => this.handleConfigChange(oldCfg, newCfg));
   }
   async startWithHttp(port = 3000) {
     console.error(`MCP Gateway starting (http://localhost:${port})...`);
@@ -26215,11 +26220,10 @@ class MCPGateway {
       sessionIdGenerator: undefined
     });
     await this.server.connect(transport);
-    this.config.watch((cfg) => this.handleConfigChange(cfg));
+    this.config.watch((oldCfg, newCfg) => this.handleConfigChange(oldCfg, newCfg));
     return transport;
   }
-  handleConfigChange(newConfig) {
-    const oldConfig = this.config.getAll();
+  handleConfigChange(oldConfig, newConfig) {
     const oldServers = new Set(Object.keys(oldConfig));
     const newServers = new Set(Object.keys(newConfig));
     const toRemove = [...oldServers].filter((s) => !newServers.has(s));
@@ -26233,12 +26237,29 @@ class MCPGateway {
       for (const key of toUpdate) {
         const oldC = oldConfig[key];
         const newC = newConfig[key];
-        if (oldC && newC && oldC.enabled === false && newC.enabled !== false) {
+        if (oldC && oldC.enabled !== false && newC && newC.enabled === false) {
+          await this.connections.disconnect(key);
+          console.error(`    ${key} disabled`);
+          continue;
+        }
+        if (oldC && oldC.enabled === false && newC && newC.enabled !== false) {
           try {
             await this.connections.connectWithRetry(key, newC);
-            console.error(`    ${key} connected`);
+            console.error(`    ${key} enabled`);
           } catch (e) {
             console.error(`    ${key} failed: ${e.message}`);
+          }
+          continue;
+        }
+        if (oldC && newC && oldC.enabled !== false && newC.enabled !== false) {
+          if (JSON.stringify(oldC) !== JSON.stringify(newC)) {
+            await this.connections.disconnect(key);
+            try {
+              await this.connections.connectWithRetry(key, newC);
+              console.error(`    ${key} reconnected (config changed)`);
+            } catch (e) {
+              console.error(`    ${key} failed: ${e.message}`);
+            }
           }
         }
       }
