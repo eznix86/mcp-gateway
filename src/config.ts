@@ -37,12 +37,13 @@ export class Config {
     return this.config;
   }
 
-  watch(callback: (config: GatewayConfig) => void): void {
+  watch(callback: (oldConfig: GatewayConfig, newConfig: GatewayConfig) => void): void {
     if (this.watcher) return;
     this.watcher = watch(this.configPath, (event: string) => {
       if (event !== "change") return;
+      const oldConfig = this.getAll();  // snapshot before reload
       this.reload();
-      callback(this.config);
+      callback(oldConfig, this.config);
     });
     console.error(`  Watching config: ${this.configPath}`);
   }
