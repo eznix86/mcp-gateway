@@ -1,6 +1,6 @@
 {
   "name": "@eznix/mcp-gateway",
-  "version": "1.4.0",
+  "version": "1.5.2",
   "description": "MCP Gateway - Aggregate multiple MCP servers into a single gateway",
   "type": "module",
   "bin": {
